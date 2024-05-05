@@ -1,0 +1,118 @@
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+import uvicorn
+import tempfile
+import shutil
+import os
+import pandas as pd
+
+app = FastAPI()
+
+@app.get("/")
+def read_root():
+    return """
+    <html>
+        <head>
+            <title>Upload Files</title>
+            <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+            <script>
+                function uploadFiles(event) {
+                    event.preventDefault();
+                    var formData = new FormData();
+                    formData.append('csv_file', document.getElementById('csv_file').files[0]);
+                    var images = document.getElementById('image_files').files;
+                    for (var i = 0; i < images.length; i++) {
+                        formData.append('image_files', images[i]);
+                    }
+                    $.ajax({
+                        xhr: function() {
+                            var xhr = new window.XMLHttpRequest();
+                            xhr.upload.addEventListener("progress", function(evt) {
+                                if (evt.lengthComputable) {
+                                    var percentComplete = evt.loaded / evt.total;
+                                    percentComplete = parseInt(percentComplete * 100);
+                                    $('#progressBar').text(percentComplete + '%');
+                                    $('#progressBar').css('width', percentComplete + '%');
+                                }
+                            }, false);
+                            return xhr;
+                        },
+                        url: '/upload/',
+                        type: 'POST',
+                        data: formData,
+                        contentType: false,
+                        processData: false,
+                        success: function(data) {
+                            alert('Files successfully uploaded');
+                            window.location.href = data;
+                        },
+                        error: function() {
+                            alert('Error uploading files');
+                        }
+                    });
+                }
+            </script>
+            <style>
+                #progressBar {
+                    width: 0%;
+                    height: 30px;
+                    background-color: green;
+                    text-align: center;
+                    color: white;
+                }
+            </style>
+        </head>
+        <body>
+            <h1>File Upload</h1>
+            <form onsubmit="uploadFiles(event)">
+                <label>CSV File:</label>
+                <input type="file" id="csv_file" name="csv_file"><br><br>
+                <label>Image Files:</label>
+                <input type="file" id="image_files" name="image_files" multiple><br><br>
+                <input type="submit" value="Upload Files">
+            </form>
+            <div id="progressBar">0%</div>
+        </body>
+    </html>
+    """
+
+def organize_photos_by_team(csv_path, image_directory):
+    df = pd.read_csv(csv_path)
+    for index, row in df.iterrows():
+        team_name = row['Team'].strip()  # Adjust column names as necessary
+        photo_name = row['Photo'].strip()
+        team_directory = os.path.join(image_directory, team_name)
+        if not os.path.exists(team_directory):
+            os.makedirs(team_directory)
+        source_path = os.path.join(image_directory, photo_name)
+        destination_path = os.path.join(team_directory, photo_name)
+        if os.path.exists(source_path):
+            shutil.move(source_path, destination_path)
+
+@app.post("/upload/")
+async def process_files(csv_file: UploadFile = File(...), image_files: list[UploadFile] = File(...)):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        csv_temp_path = os.path.join(temp_dir, csv_file.filename)
+        with open(csv_temp_path, 'wb') as f:
+            shutil.copyfileobj(csv_file.file, f)
+        for image_file in image_files:
+            image_path = os.path.join(temp_dir, image_file.filename)
+            with open(image_path, 'wb') as f:
+                shutil.copyfileobj(image_file.file, f)
+        try:
+            organize_photos_by_team(csv_temp_path, temp_dir)
+            zip_base_path = os.path.join(temp_dir, "processed_images")
+            zip_path = shutil.make_archive(zip_base_path, 'zip', temp_dir)
+            if os.path.exists(zip_path):
+                print("Zip file created successfully:", zip_path)
+                return FileResponse(zip_path, media_type='application/zip', filename="processed_images.zip")
+            else:
+                print("Failed to create zip file")
+                raise HTTPException(status_code=500, detail="Failed to create zip file")
+        except Exception as e:
+            print("Error processing files:", e)
+            raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)

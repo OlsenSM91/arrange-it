@@ -1,0 +1,59 @@
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+import uvicorn
+import tempfile
+import shutil
+import os
+
+app = FastAPI()
+
+# Serve static files, HTML for the form will be in the 'static' directory
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/", response_class=HTMLResponse)
+def read_root():
+    return """
+    <html>
+        <head>
+            <title>Upload Files</title>
+        </head>
+        <body>
+            <h1>File Upload</h1>
+            <form action="/upload/" method="post" enctype="multipart/form-data">
+                <label>CSV File:</label>
+                <input type="file" name="csv_file"><br><br>
+                <label>Image Files:</label>
+                <input type="file" name="image_files" multiple><br><br>
+                <input type="submit">
+            </form>
+        </body>
+    </html>
+    """
+
+@app.post("/upload/", response_class=FileResponse)
+async def process_files(csv_file: UploadFile = File(...), image_files: list[UploadFile] = File(...)):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Save CSV file
+        csv_temp_path = os.path.join(temp_dir, csv_file.filename)
+        with open(csv_temp_path, 'wb') as f:
+            shutil.copyfileobj(csv_file.file, f)
+
+        # Save image files
+        for image_file in image_files:
+            image_path = os.path.join(temp_dir, image_file.filename)
+            with open(image_path, 'wb') as f:
+                shutil.copyfileobj(image_file.file, f)
+
+        # Process images
+        try:
+            organize_photos_by_team(csv_temp_path, temp_dir)
+            # Create a zip file of the processed directories
+            zip_path = os.path.join(temp_dir, "processed_images.zip")
+            shutil.make_archive(zip_path.replace('.zip', ''), 'zip', temp_dir)
+            return FileResponse(zip_path, media_type='application/zip', filename="processed_images.zip")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
