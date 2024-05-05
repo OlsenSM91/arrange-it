@@ -136,6 +136,7 @@ def read_root():
             </style>
         </head>
         <body>
+	<br>
         <img src="/static/arrangeit-logo.png" alt="Arrange.it Logo" class="logo">
         <div class="main">
             <h1>Arrange.it Organizer</h1>
