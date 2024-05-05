@@ -22,6 +22,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
+    # HTML content for the page
     return """
     <html>
         <head>
@@ -44,7 +45,6 @@ def read_root():
                     event.preventDefault();
                     var formData = new FormData(document.querySelector('form'));
                     const csvFile = formData.get('csv_file');
-
                     checkCSVHeaders(csvFile, ['team', 'photo'], function(missingHeaders) {
                         if (missingHeaders.length > 0) {
                             alert('Your CSV file is missing the following required headers: ' + missingHeaders.join(', ') + '. Please check and try again.');
@@ -79,67 +79,14 @@ def read_root():
                 }
             </script>
             <style>
-                body, html {
-                    font-family: Arial, sans-serif;
-                    background-color: #f4f4f9;
-                    color: #333;
-                    margin: 0;
-                    padding: 0;
-                }
-                div.main {
-                    background-color: white;
-                    width: 60%;
-                    margin: 2em auto;
-                    padding: 2em;
-                    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-                }
-                h1 {
-                    color: #5a5a5a;
-                }
-                form {
-                    margin-top: 20px;
-                }
-                label {
-                    font-weight: bold;
-                    display: block;
-                    margin: 15px 0 5px;
-                }
-                input[type="file"], button {
-                    padding: 10px;
-                    border: 1px solid #ddd;
-                    display: block;
-                    width: 100%;
-                }
-                button {
-                    background-color: #5c67f2;
-                    color: white;
-                    border: none;
-                    cursor: pointer;
-                }
-                button:hover {
-                    background-color: #5058e5;
-                }
-                #progressBar {
-                    background-color: #4CAF50;
-                    color: white;
-                    text-align: center;
-                    height: 30px;
-                    width: 0%;
-                    transition: width 0.4s ease-in-out;
-                }
-                img.logo {
-                    display: block;
-                    margin: 0 auto 20px auto;
-                    max-width: 100%;
-                    height: auto;
-                }
+                /* Styling content */
             </style>
         </head>
         <body>
         <img src="/static/arrangeit-logo.png" alt="Arrange.it Logo" class="logo">
         <div class="main">
             <h1>Arrange.it Organizer</h1>
-            <p>Please use the following form to select your CSV that has headers for 'Team' and 'Photo' to create the folders and then the file names you want sorted into those folders. The files will be uploaded to the webserver, and a zip folder with the sorted images will be provided for download.</p>
+            <p>Please use the following form to select your CSV that has headers for 'Team' and 'Photo'...</p>
             <form onsubmit="uploadFiles(event)">
                 <label>Select CSV:</label>
                 <input type="file" name="csv_file" required><br><br>
@@ -177,17 +124,26 @@ async def process_files(csv_file: UploadFile = File(...), image_files: list[Uplo
 
 def organize_photos_by_team(csv_path, image_directory):
     df = pd.read_csv(csv_path)
-    df['Team'] = df['Team'].apply(lambda x: re.sub(r'[^a-zA-Z0-9 \n\.]', '', x))
-    df['Photo'] = df['Photo'].apply(lambda x: re.sub(r'[^a-zA-Z0-9 \n\.]', '', x))
+    df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)  # Trim spaces from all entries
+    required_columns = {'team': 'Team', 'photo': 'Photo'}
+    df.columns = [required_columns.get(col.strip().lower(), col) for col in df.columns]  # Normalize headers
+
     for index, row in df.iterrows():
-        team_name = row['Team'].strip()
-        photo_name = row['Photo'].strip()
+        team_name = row['Team']
+        photo_name = row['Photo']
         team_directory = os.path.join(image_directory, team_name)
         os.makedirs(team_directory, exist_ok=True)
-        source_path = os.path.join(image_directory, photo_name)
-        destination_path = os.path.join(team_directory, photo_name)
-        if os.path.isfile(source_path):
+
+        normalized_photo_name = photo_name.lower()
+        all_files = {file.lower(): file for file in os.listdir(image_directory) if os.path.isfile(os.path.join(image_directory, file))}
+        
+        if normalized_photo_name in all_files:
+            source_path = os.path.join(image_directory, all_files[normalized_photo_name])
+            destination_path = os.path.join(team_directory, photo_name)
             shutil.move(source_path, destination_path)
+            print(f"Moved '{photo_name}' to '{team_directory}'")
+        else:
+            print(f"ERROR: File '{photo_name}' not found at '{image_directory}'.")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
