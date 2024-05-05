@@ -10,12 +10,15 @@ import re
 
 app = FastAPI()
 
-# Define and create a base directory for uploads
+# Define and create a base directory for uploads and static directory for additional files
 BASE_DIR = "uploads"
+STATIC_DIR = "static"
 os.makedirs(BASE_DIR, exist_ok=True)
+os.makedirs(STATIC_DIR, exist_ok=True)
 
-# Serve static files from the 'uploads' directory
+# Serve static files from the 'uploads' directory and a general static directory
 app.mount("/uploads", StaticFiles(directory=BASE_DIR), name="uploads")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
@@ -23,6 +26,7 @@ def read_root():
     <html>
         <head>
             <title>Arrange.it - File Upload</title>
+            <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
             <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
             <script>
                 function checkCSVHeaders(file, requiredHeaders, callback) {
@@ -123,9 +127,16 @@ def read_root():
                     width: 0%;
                     transition: width 0.4s ease-in-out;
                 }
+                img.logo {
+                    display: block;
+                    margin: 0 auto 20px auto;
+                    max-width: 100%;
+                    height: auto;
+                }
             </style>
         </head>
         <body>
+        <img src="/static/arrangeit-logo.png" alt="Arrange.it Logo" class="logo">
         <div class="main">
             <h1>Arrange.it Organizer</h1>
             <p>Please use the following form to select your CSV that has headers for 'Team' and 'Photo' to create the folders and then the file names you want sorted into those folders. The files will be uploaded to the webserver, and a zip folder with the sorted images will be provided for download.</p>
